@@ -32,16 +32,15 @@ Route.get('test_db_connection', async ({ response }: HttpContextContract) => {
   })
 })
 
+// Public routes group
 Route.group(() => {
-  Route.resource('users/', 'UsersController')
   Route.post('login/', 'AuthController.login')
+  Route.post('users/', 'UsersController.store')
 }).prefix('v1/api')
 
-//Authenticated Routes Group
+// Authenticated Routes Group
 Route.group(() => {
-  Route.get('test/', ({ response }: HttpContextContract) =>
-    response.ok({ message: 'Você está autenticado' })
-  )
+  Route.resource('users/', 'UsersController').except(['store'])
 })
   .prefix('v1/api')
   .middleware(['auth', 'is:admin,client'])
