@@ -37,6 +37,9 @@ export default class User extends compose(BaseModel, Filterable) {
   public cpf: string
 
   @column()
+  public urlProfilePic: string
+
+  @column()
   public email: string
 
   @column({ serializeAs: null })

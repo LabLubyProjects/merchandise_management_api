@@ -3,6 +3,7 @@ import Database from '@ioc:Adonis/Lucid/Database'
 import Address from 'App/Models/Address'
 import Role from 'App/Models/Role'
 import User from 'App/Models/User'
+import { sendImgToS3AWS } from 'App/Services/sendImgToS3AWS'
 import { sendMail } from 'App/Services/sendMail'
 import AccessAllowValidator from 'App/Validators/User/AccessAllowValidator'
 import StoreValidator from 'App/Validators/User/StoreValidator'
@@ -38,7 +39,7 @@ export default class UsersController {
 
   public async store({ response, request }: HttpContextContract) {
     await request.validate(StoreValidator)
-    const bodyUser = request.only(['name', 'cpf', 'email', 'password'])
+    const bodyUser = request.only(['name', 'cpf', 'email', 'password', 'urlProfilePic'])
     const bodyAddress = request.only([
       'zipCode',
       'state',
@@ -49,10 +50,22 @@ export default class UsersController {
       'complement',
     ])
 
+    const urlProfilePic = request.file('urlProfilePic')
+    let url
+    try {
+      url = await sendImgToS3AWS(urlProfilePic, { name: bodyUser.name, cpf: bodyUser.cpf })
+    } catch (error) {
+      return response.badRequest({
+        message: 'Error uploading image to S3 AWS',
+        originalError: error.message,
+      })
+    }
+
     let userCreated
     const trx = await Database.beginGlobalTransaction()
 
     try {
+      bodyUser.urlProfilePic = url
       userCreated = await User.create(bodyUser)
       const roleClient = await Role.findBy('name', 'client', trx)
       if (roleClient) await userCreated.related('roles').attach([roleClient.id], trx)
@@ -117,7 +130,7 @@ export default class UsersController {
   public async update({ response, request, params }: HttpContextContract) {
     await request.validate(UpdateValidator)
     const userSecureId = params.id
-    const bodyUser = request.only(['name', 'cpf', 'email', 'password'])
+    const bodyUser = request.only(['name', 'cpf', 'email', 'password', 'urlProfilePic'])
     const bodyAddress = request.only([
       'addressId',
       'zipCode',
@@ -129,11 +142,25 @@ export default class UsersController {
       'complement',
     ])
 
+    const urlProfilePic = request.file('urlProfilePic')
+
     let userUpdated
     const trx = await Database.beginGlobalTransaction()
 
     try {
       userUpdated = await User.findByOrFail('secure_id', userSecureId)
+      let url
+      try {
+        url = await sendImgToS3AWS(urlProfilePic, { name: userUpdated.name, cpf: userUpdated.cpf })
+      } catch (error) {
+        return response.badRequest({
+          message: 'Error uploading image to S3 AWS',
+          originalError: error.message,
+        })
+      }
+
+      bodyUser.urlProfilePic = url
+
       userUpdated.useTransaction('trx')
       await userUpdated.merge(bodyUser).save()
     } catch (error) {
@@ -141,16 +168,19 @@ export default class UsersController {
       return response.badRequest({ message: 'Error in update user', originalError: error.message })
     }
 
-    try {
-      const addressesUpdated = await Address.findByOrFail('secure_id', userSecureId)
-      addressesUpdated.useTransaction(trx)
-      delete bodyAddress.addressId
-    } catch (error) {
-      trx.rollback()
-      return response.badRequest({
-        message: 'Error in create address',
-        originalError: error.message,
-      })
+    if (bodyAddress.addressId) {
+      try {
+        const addressesUpdated = await Address.findByOrFail('secure_id', userSecureId)
+        addressesUpdated.useTransaction(trx)
+        delete bodyAddress.addressId
+        await addressesUpdated.merge(bodyAddress).save()
+      } catch (error) {
+        trx.rollback()
+        return response.badRequest({
+          message: 'Error in create address',
+          originalError: error.message,
+        })
+      }
     }
 
     let userFind
