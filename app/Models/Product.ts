@@ -21,6 +21,9 @@ export default class Product extends compose(BaseModel, Filterable) {
   @column()
   public code: string
 
+  @column()
+  public price: number
+
   @column.dateTime({ autoCreate: true })
   public createdAt: DateTime
 
