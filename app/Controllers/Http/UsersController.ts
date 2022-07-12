@@ -3,6 +3,7 @@ import Database from '@ioc:Adonis/Lucid/Database'
 import Address from 'App/Models/Address'
 import Role from 'App/Models/Role'
 import User from 'App/Models/User'
+import { sendMail } from 'App/Services/sendMail'
 import AccessAllowValidator from 'App/Validators/User/AccessAllowValidator'
 import StoreValidator from 'App/Validators/User/StoreValidator'
 import UpdateValidator from 'App/Validators/User/UpdateValidator'
@@ -81,6 +82,16 @@ export default class UsersController {
       trx.rollback()
       return response.badRequest({
         message: 'Error in create address',
+        originalError: error.message,
+      })
+    }
+
+    try {
+      await sendMail(userFind, 'email/welcome')
+    } catch (error) {
+      trx.rollback()
+      return response.badRequest({
+        message: 'Error sending welcome email',
         originalError: error.message,
       })
     }
